@@ -11,12 +11,14 @@ import statsmodels.api as sm
 import matplotlib
 matplotlib.use("Agg")  # Headless rendering on server
 import matplotlib.pyplot as plt
+import gc
 
 # ==============================================================
 # Configuration
 # ==============================================================
-BENCHMARK_TRIALS = 100   # Reduced from 1000 for speed
-BENCHMARK_TREES = 50     # Reduced from 200 for speed
+BENCHMARK_TRIALS = 50   # Reduced from 1000 for speed
+BENCHMARK_TREES = 20     # Reduced from 200 for speed
+CV_TREES = 100
 
 
 # ==============================================================
@@ -122,15 +124,19 @@ def cv_run(train_df: pd.DataFrame, predictors: list, method: str = "ols", k: int
             X_te_ = sm.add_constant(X_te, has_constant="add")
             fit = sm.OLS(y_tr, X_tr_).fit()
             y_hat = fit.predict(X_te_)
+            del fit #explicity delete to free memory
         else:
-            rf = RandomForestRegressor(n_estimators=500, random_state=seed, n_jobs=-1)
+            rf = RandomForestRegressor(n_estimators=CV_TREES, random_state=seed, n_jobs=1, max_depth=10, min_samples_leaf=5)
             rf.fit(X_tr, y_tr)
             y_hat = rf.predict(X_te)
+            del rf  # explicitly delete to free memory
 
         r2 = r2_score(y_te, y_hat)
         rmse = mean_squared_error(y_te, y_hat, squared=False)
         r2_list.append(r2); rmse_list.append(rmse)
         details.append({"fold": i, "R2": float(r2), "RMSE": float(rmse)})
+
+        gc.collect()  # force garbage collection to free memory
 
     return {
         "summary": {
@@ -197,7 +203,7 @@ def fit_and_predict(user_values: dict, sex_key: str, method: str = "ols", k: int
         model = fit
         rf_importance = None
     else:
-        rf = RandomForestRegressor(n_estimators=1000, random_state=seed, n_jobs=-1)
+        rf = RandomForestRegressor(n_estimators=200, random_state=seed, n_jobs=1, max_depth=15, min_samples_leaf=3)
         rf.fit(X, y)
         pred, pi_lower, pi_upper = rf_predict_with_quantiles(rf, x_user, 0.025, 0.975)
         model = rf
@@ -259,8 +265,9 @@ def random_feature_benchmark_fixed(user_values: dict, sex_key: str, method: str 
                 oob_score=True,
                 bootstrap=True,
                 random_state=seed + t,
-                n_jobs=-1,
+                n_jobs=1,   #changed from -1 to reduce memory
                 min_samples_leaf=rf_min_samples_leaf,
+                max_depth=10    #added depth limit
             )
             rf.fit(X, y)
             r2_oob = float(rf.oob_score_)
@@ -289,10 +296,19 @@ def random_feature_benchmark_fixed(user_values: dict, sex_key: str, method: str 
             else:
                 rmse_oob = np.nan
 
-            rows.append({"trial": t, "R2_mean": r2_oob, "RMSE_mean": rmse_oob})  
+            rows.append({"trial": t, "R2_mean": r2_oob, "RMSE_mean": rmse_oob})
+
+            #CRITICAL: Delete model and force garbage collection to free memory
+            del rf
+            if t % 10 == 0:
+                gc.collect()
+
         else:
             cv = cv_run(train_df, feats, method=method, k=k, seed=seed + t)
             rows.append({"trial": t, "R2_mean": cv["summary"]["R2_mean"], "RMSE_mean": cv["summary"]["RMSE_mean"]})
+            # Force garbage collection to free memory
+            if t % 10 == 0:
+                gc.collect()
 
     details = pd.DataFrame(rows)
     summary = {
@@ -328,10 +344,15 @@ def save_cv_boxplots(cv_details: list, title_prefix: str = "CV"):
 
     fname = f"cv_{uuid.uuid4().hex}.png"
     path = os.path.join(PLOTS_DIR, fname)
-    fig.tight_layout(); fig.savefig(path, dpi=150); plt.close(fig)
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    plt.close('all')    # Extra safety
+    del fig, axes   # Explicit deletion
+    gc.collect()    # Force cleanup
     return url_for("static", filename=f"plots/{fname}")
 
-"""
+
 def _label_positions(vals: np.ndarray, mean_val: float, user_val: float, bins: int):
     hist_counts, _ = np.histogram(vals, bins=bins)
     y_max = hist_counts.max() if len(hist_counts) else 1
@@ -342,7 +363,7 @@ def _label_positions(vals: np.ndarray, mean_val: float, user_val: float, bins: i
     if np.isfinite(user_val) and np.isfinite(mean_val) and abs(user_val - mean_val) < 1.5 * off:
         mean_adj -= off; user_adj += off
     return mean_adj, user_adj, y_lab
-"""
+
 
 def save_benchmark_histograms(bench_df: pd.DataFrame, rmse_user: float = np.nan, r2_user: float = np.nan):
     """Create benchmark histograms with legend showing benchmark mean vs user's result."""
@@ -388,6 +409,9 @@ def save_benchmark_histograms(bench_df: pd.DataFrame, rmse_user: float = np.nan,
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
+    plt.close('all')    # Extra safety
+    del fig, axes   # Explicit deletion
+    gc.collect()    # Force cleanup
     return url_for("static", filename=f"plots/{fname}")
 
 
@@ -464,6 +488,7 @@ def getPrediction():
         # CV plot
         cv_img = save_cv_boxplots(res["cv"]["details"], title_prefix=f"{method.upper()} ({sex_key})")
         
+        # Random-feature benchmark (1000 trials; RF uses FAST OOB path)
         bench = random_feature_benchmark_fixed(
             user_values, 
             sex_key=sex_key, 
@@ -474,13 +499,6 @@ def getPrediction():
             rf_fast=True, 
             rf_trees=BENCHMARK_TREES,
             rf_min_samples_leaf=5
-        )
-
-
-        # Random-feature benchmark (1000 trials; RF uses FAST OOB path)
-        bench = random_feature_benchmark_fixed(
-            user_values, sex_key=sex_key, method=method, trials=BENCHMARK_TRIALS, k=5, seed=2025,
-            rf_fast=True, rf_trees=BENCHMARK_TREES, rf_min_samples_leaf=5
         )
 
         # Benchmark histograms with mean (gray dashed) and user (red dashed)
@@ -495,7 +513,12 @@ def getPrediction():
         rf_importance = None
         if method == "rf" and res.get("rf_importance") is not None and len(res["rf_importance"]) > 0:
             rf_importance = res["rf_importance"].head(10).copy()
-
+        
+        # Clean up model from memory before rendering
+        if 'res' in locals() and 'model' in res:
+            del res['model']
+        gc.collect()
+        
         return render_template(
             "results.html",
             # core outputs
@@ -525,6 +548,7 @@ def getPrediction():
         )
 
     except Exception as e:
+        gc.collect()
         return f"Prediction Error: {str(e)}", 500
 
 
