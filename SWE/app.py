@@ -16,8 +16,8 @@ import gc
 # ==============================================================
 # Configuration
 # ==============================================================
-BENCHMARK_TRIALS = 25   # Reduced from 1000 for speed
-BENCHMARK_TREES = 10     # Reduced from 200 for speed
+BENCHMARK_TRIALS = 50   # Reduced from 1000 for speed
+BENCHMARK_TREES = 8     # Reduced from 200 for speed
 CV_TREES = 50
 
 
@@ -300,7 +300,7 @@ def random_feature_benchmark_fixed(user_values: dict, sex_key: str, method: str 
 
             #CRITICAL: Delete model and force garbage collection to free memory
             del rf
-            if t % 10 == 0:
+            if t % 5 == 0:
                 gc.collect()
 
         else:
@@ -343,7 +343,7 @@ def random_feature_benchmark_fixed(user_values: dict, sex_key: str, method: str 
                 rows.append({"trial": t, "R2_mean": np.nan, "RMSE_mean": np.nan})
             
             # Force garbage collection to free memory
-            if t % 10 == 0:
+            if t % 5 == 0:
                 gc.collect()
 
     details = pd.DataFrame(rows)
