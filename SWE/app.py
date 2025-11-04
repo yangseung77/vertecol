@@ -304,8 +304,44 @@ def random_feature_benchmark_fixed(user_values: dict, sex_key: str, method: str 
                 gc.collect()
 
         else:
-            cv = cv_run(train_df, feats, method=method, k=k, seed=seed + t)
-            rows.append({"trial": t, "R2_mean": cv["summary"]["R2_mean"], "RMSE_mean": cv["summary"]["RMSE_mean"]})
+            # OLS: Use simple 80/20 train/test split instead of K-fold CV for memory efficiency
+            X = train_df[feats].values
+            y = train_df["Sum_Verts"].values
+            n = len(X)
+            
+            # Simple split
+            split_idx = int(0.8 * n)
+            indices = np.arange(n)
+            np.random.seed(seed + t)
+            np.random.shuffle(indices)
+            
+            train_idx = indices[:split_idx]
+            test_idx = indices[split_idx:]
+            
+            if len(test_idx) < 2:  # Need at least 2 samples for test
+                rows.append({"trial": t, "R2_mean": np.nan, "RMSE_mean": np.nan})
+                continue
+            
+            X_train, X_test = X[train_idx], X[test_idx]
+            y_train, y_test = y[train_idx], y[test_idx]
+            
+            # Fit OLS
+            X_train_ = sm.add_constant(X_train, has_constant="add")
+            X_test_ = sm.add_constant(X_test, has_constant="add")
+            
+            try:
+                fit = sm.OLS(y_train, X_train_).fit()
+                y_pred = fit.predict(X_test_)
+                
+                r2 = r2_score(y_test, y_pred)
+                rmse = mean_squared_error(y_test, y_pred, squared=False)
+                
+                rows.append({"trial": t, "R2_mean": float(r2), "RMSE_mean": float(rmse)})
+                
+                del fit
+            except:
+                rows.append({"trial": t, "R2_mean": np.nan, "RMSE_mean": np.nan})
+            
             # Force garbage collection to free memory
             if t % 10 == 0:
                 gc.collect()
