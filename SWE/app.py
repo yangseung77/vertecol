@@ -16,8 +16,8 @@ import gc
 # ==============================================================
 # Configuration
 # ==============================================================
-BENCHMARK_TRIALS = 50   # Reduced from 1000 for speed
-BENCHMARK_TREES = 8     # Reduced from 200 for speed
+BENCHMARK_TRIALS = 100   # Reduced from 1000 for speed
+BENCHMARK_TREES = 5     # Reduced from 200 for speed
 CV_TREES = 50
 
 
@@ -267,7 +267,8 @@ def random_feature_benchmark_fixed(user_values: dict, sex_key: str, method: str 
                 random_state=seed + t,
                 n_jobs=1,   #changed from -1 to reduce memory
                 min_samples_leaf=rf_min_samples_leaf,
-                max_depth=10    #added depth limit
+                max_depth=10,
+                max_features='sqrt'
             )
             rf.fit(X, y)
             r2_oob = float(rf.oob_score_)
@@ -288,19 +289,28 @@ def random_feature_benchmark_fixed(user_values: dict, sex_key: str, method: str 
                     oob_pred[mask_oob] += estimator.predict(X[mask_oob])
                     oob_count[mask_oob] += 1
 
-            # Average predictions and calculate RMSE
+            # Calculate R² and RMSE only for samples that were OOB at least once
             mask_valid = oob_count > 0
-            if np.sum(mask_valid) > 0:
+            if np.sum(mask_valid) > 1: # Need at least 2 samples for RMSE
                 oob_pred[mask_valid] /= oob_count[mask_valid]
-                rmse_oob = float(np.sqrt(np.mean((y[mask_valid] - oob_pred[mask_valid]) ** 2)))
+                y_valid = y[mask_valid]
+                pred_valid = oob_pred[mask_valid]
+
+                # Calculate R² properly: 1 - (SS_res / SS_tot)
+                ss_res = np.sum((y_valid - pred_valid) ** 2)
+                ss_tot = np.sum((y_valid - np.mean(y_valid)) ** 2)
+                r2_oob = float(1 - (ss_res / ss_tot)) if ss_tot > 0 else np.nan
+                
+                rmse_oob = float(np.sqrt(np.mean((y_valid - pred_valid) ** 2)))
             else:
+                r2_oob = np.nan
                 rmse_oob = np.nan
 
             rows.append({"trial": t, "R2_mean": r2_oob, "RMSE_mean": rmse_oob})
 
             #CRITICAL: Delete model and force garbage collection to free memory
-            del rf
-            if t % 5 == 0:
+            del rf, oob_pred, oob_count, mask_oob, mask_valid
+            if t % 3 == 0:
                 gc.collect()
 
         else:
@@ -343,7 +353,7 @@ def random_feature_benchmark_fixed(user_values: dict, sex_key: str, method: str 
                 rows.append({"trial": t, "R2_mean": np.nan, "RMSE_mean": np.nan})
             
             # Force garbage collection to free memory
-            if t % 5 == 0:
+            if t % 3 == 0:
                 gc.collect()
 
     details = pd.DataFrame(rows)
@@ -412,7 +422,7 @@ def save_benchmark_histograms(bench_df: pd.DataFrame, rmse_user: float = np.nan,
     rmse_vals = bench_df["RMSE_mean"].dropna().values
     if len(rmse_vals) > 0:
         rmse_mean = float(np.nanmean(rmse_vals))
-        axes[0].hist(rmse_vals, bins=30, edgecolor="black", alpha=0.7, label="Random features")
+        axes[0].hist(rmse_vals, bins=20, edgecolor="black", alpha=0.7, label="Random features")
         if np.isfinite(rmse_mean):
             axes[0].axvline(rmse_mean, linestyle="--", color="gray", linewidth=2, 
                           label=f"Benchmark: {rmse_mean:.2f} mm")
@@ -428,7 +438,7 @@ def save_benchmark_histograms(bench_df: pd.DataFrame, rmse_user: float = np.nan,
     r2_vals = bench_df["R2_mean"].dropna().values
     if len(r2_vals) > 0:
         r2_mean = float(np.nanmean(r2_vals))
-        axes[1].hist(r2_vals, bins=30, edgecolor="black", alpha=0.7, label="Random features")
+        axes[1].hist(r2_vals, bins=20, edgecolor="black", alpha=0.7, label="Random features")
         if np.isfinite(r2_mean):
             axes[1].axvline(r2_mean, linestyle="--", color="gray", linewidth=2, 
                           label=f"Benchmark: {r2_mean:.3f}")
