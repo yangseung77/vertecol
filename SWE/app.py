@@ -16,9 +16,9 @@ import gc
 # ==============================================================
 # Configuration
 # ==============================================================
-BENCHMARK_TRIALS = 50   # Reduced from 1000 for speed
-BENCHMARK_TREES = 20     # Reduced from 200 for speed
-CV_TREES = 100
+BENCHMARK_TRIALS = 25   # Reduced from 1000 for speed
+BENCHMARK_TREES = 10     # Reduced from 200 for speed
+CV_TREES = 50
 
 
 # ==============================================================
@@ -203,7 +203,7 @@ def fit_and_predict(user_values: dict, sex_key: str, method: str = "ols", k: int
         model = fit
         rf_importance = None
     else:
-        rf = RandomForestRegressor(n_estimators=200, random_state=seed, n_jobs=1, max_depth=15, min_samples_leaf=3)
+        rf = RandomForestRegressor(n_estimators=100, random_state=seed, n_jobs=1, max_depth=15, min_samples_leaf=3)
         rf.fit(X, y)
         pred, pi_lower, pi_upper = rf_predict_with_quantiles(rf, x_user, 0.025, 0.975)
         model = rf
@@ -335,7 +335,7 @@ def save_cv_boxplots(cv_details: list, title_prefix: str = "CV"):
     if len(r2_vals) == 0 or len(rmse_vals) == 0:
         return None
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    fig, axes = plt.subplots(1, 2, figsize=(8, 3))
     axes[0].boxplot(r2_vals, vert=True)
     axes[0].set_title(f"{title_prefix} R²"); axes[0].set_ylabel("R²")
 
@@ -345,7 +345,7 @@ def save_cv_boxplots(cv_details: list, title_prefix: str = "CV"):
     fname = f"cv_{uuid.uuid4().hex}.png"
     path = os.path.join(PLOTS_DIR, fname)
     fig.tight_layout()
-    fig.savefig(path, dpi=150)
+    fig.savefig(path, dpi=100)
     plt.close(fig)
     plt.close('all')    # Extra safety
     del fig, axes   # Explicit deletion
@@ -370,7 +370,7 @@ def save_benchmark_histograms(bench_df: pd.DataFrame, rmse_user: float = np.nan,
     if bench_df is None or bench_df.empty:
         return None
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+    fig, axes = plt.subplots(1, 2, figsize=(9, 3))
 
     # RMSE Panel
     rmse_vals = bench_df["RMSE_mean"].dropna().values
@@ -386,7 +386,7 @@ def save_benchmark_histograms(bench_df: pd.DataFrame, rmse_user: float = np.nan,
         axes[0].set_title("RMSE Distribution (Random-Feature Trials)")
         axes[0].set_xlabel("RMSE (mm)")
         axes[0].set_ylabel("Frequency")
-        axes[0].legend(loc="best", framealpha=0.9)
+        axes[0].legend(loc="best", framealpha=0.9, fontsize=8)
 
     # R² Panel
     r2_vals = bench_df["R2_mean"].dropna().values
@@ -402,15 +402,17 @@ def save_benchmark_histograms(bench_df: pd.DataFrame, rmse_user: float = np.nan,
         axes[1].set_title("R² Distribution (Random-Feature Trials)")
         axes[1].set_xlabel("R² Score")
         axes[1].set_ylabel("Frequency")
-        axes[1].legend(loc="best", framealpha=0.9)
+        axes[1].legend(loc="best", framealpha=0.9, fontsize=8)
 
     fname = f"bench_{uuid.uuid4().hex}.png"
     path = os.path.join(PLOTS_DIR, fname)
     fig.tight_layout()
-    fig.savefig(path, dpi=150)
+    fig.savefig(path, dpi=90, bbox_inches='tight')
+   
+    # Aggresive cleanup
     plt.close(fig)
     plt.close('all')    # Extra safety
-    del fig, axes   # Explicit deletion
+    del fig, axes, rmse_vals, r2_vals   # Explicit deletion
     gc.collect()    # Force cleanup
     return url_for("static", filename=f"plots/{fname}")
 
@@ -487,6 +489,9 @@ def getPrediction():
 
         # CV plot
         cv_img = save_cv_boxplots(res["cv"]["details"], title_prefix=f"{method.upper()} ({sex_key})")
+
+        # Force cleanup after CV plot
+        gc.collect()
         
         # Random-feature benchmark (1000 trials; RF uses FAST OOB path)
         bench = random_feature_benchmark_fixed(
@@ -500,6 +505,9 @@ def getPrediction():
             rf_trees=BENCHMARK_TREES,
             rf_min_samples_leaf=5
         )
+
+        # Force cleanup after benchmarking
+        gc.collect()
 
         # Benchmark histograms with mean (gray dashed) and user (red dashed)
         r2_user = res["cv"]["summary"]["R2_mean"]
@@ -517,6 +525,8 @@ def getPrediction():
         # Clean up model from memory before rendering
         if 'res' in locals() and 'model' in res:
             del res['model']
+        if 'bench' in locals() and 'details' in bench:
+            del bench['details']  # Remove large DataFrame
         gc.collect()
         
         return render_template(
