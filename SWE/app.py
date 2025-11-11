@@ -16,9 +16,9 @@ import gc
 # ==============================================================
 # Configuration
 # ==============================================================
-BENCHMARK_TRIALS = 100   # Reduced from 1000 for speed
-BENCHMARK_TREES = 5     # Reduced from 200 for speed
-CV_TREES = 50
+#BENCHMARK_TRIALS = 100   # Reduced from 1000 for speed
+#BENCHMARK_TREES = 5     # Reduced from 200 for speed
+#CV_TREES = 50
 
 
 # ==============================================================
@@ -229,15 +229,16 @@ def fit_and_predict(user_values: dict, sex_key: str, method: str = "ols", k: int
 # ==============================================================
 # Random-feature benchmarking (FAST OOB for RF, CV for OLS)
 # ==============================================================
-
+"""
 def random_feature_benchmark_fixed(user_values: dict, sex_key: str, method: str = "ols",
                                    trials: int = 1000, k: int = 5, seed: int = 2025,
-                                   rf_fast: bool = True, rf_trees: int = 200, rf_min_samples_leaf: int = 1):
-    """
+                                   rf_fast: bool = True, rf_trees: int = 200, rf_min_samples_leaf: int = 1):"""
+"""
     p = number of user predictors. For each trial, sample p random features.
     - RF: if rf_fast, use OOB R² / OOB RMSE (fast path) instead of K-fold CV.
     - OLS: always K-fold CV.
     """
+"""
     p = len([v for v in VERTE_NAMES if v in user_values and float(user_values[v]) > 0])
     if p < 1:
         return {"summary": {}, "details": pd.DataFrame()}
@@ -366,8 +367,97 @@ def random_feature_benchmark_fixed(user_values: dict, sex_key: str, method: str 
         "RMSE_avg": float(np.nanmean(details["RMSE_mean"])) if len(details) else np.nan,
         "RMSE_sd": float(np.nanstd(details["RMSE_mean"], ddof=1)) if details["RMSE_mean"].notna().sum() > 1 else np.nan,
     }
-    return {"summary": summary, "details": details}
+    return {"summary": summary, "details": details} 
+"""
+def random_feature_benchmark_from_csv(user_values: dict, sex_key: str, method: str = "ols"):
+    """
+    Load pre-computed benchmark results from CSV files.
+    Much faster and more memory-efficient than computing on the fly.
+    """
+    # Count number of vertebrae used
+    p = len([v for v in VERTE_NAMES if v in user_values and float(user_values[v]) > 0])
+    if p < 1:
+        return {"summary": {}, "details": pd.DataFrame()}
+    
+    # Map method to folder name
+    method_folder = "Regression results" if method == "ols" else "Random forest results"
+    
+    # Map sex_key to folder name
+    sex_folder_map = {
+        "Pooled": "Pooled sex",
+        "M": "Male",
+        "F": "Female"
+    }
+    sex_folder = sex_folder_map.get(sex_key, "Pooled sex")
 
+    # Match the actual CSV filenames based on sex
+    sex_prefix_map = {
+        "Pooled": "combined",
+        "M": "male",
+        "F": "female"
+    }
+    sex_prefix = sex_prefix_map.get(sex_key, "combined")
+    
+    # Match the actual CSV filenames
+    if method == "ols":
+        csv_filename = f"{sex_prefix}_regression_results_vars_{p}.csv"
+    else:
+        csv_filename = f"{sex_prefix}_random_forest_results_{p}.csv"
+    
+    # Construct file path - benchmark_data should be at same level as SWE folder
+    # Since app.py is in SWE/, go up one level (..) to reach benchmark_data
+    benchmark_base = os.path.join(os.path.dirname(__file__), "..", "benchmark_data")
+    csv_path = os.path.join(benchmark_base, method_folder, sex_folder, csv_filename)
+    
+    # Normalize path for cross-platform compatibility
+    csv_path = os.path.normpath(csv_path)
+    
+    # Check if file exists
+    if not os.path.exists(csv_path):
+        print(f"Warning: Benchmark file not found: {csv_path}")
+        print(f"Looking for file with {p} vertebrae")
+        return {"summary": {}, "details": pd.DataFrame()}
+    
+    try:
+        # Read the CSV file
+        bench_df = pd.read_csv(csv_path)
+        
+        # Check for required columns
+        # Columns should be: Iteration, Num_Vari, Selected_Vertebrae, MSE, RMSE, R_Squared
+        if 'R_Squared' not in bench_df.columns or 'RMSE' not in bench_df.columns:
+            print(f"Warning: Required columns not found in {csv_path}")
+            print(f"Available columns: {bench_df.columns.tolist()}")
+            return {"summary": {}, "details": pd.DataFrame()}
+        
+        # Create details dataframe with trial number, R2, and RMSE
+        details = pd.DataFrame({
+            'trial': bench_df['Iteration'].values,
+            'R2_mean': bench_df['R_Squared'].values,
+            'RMSE_mean': bench_df['RMSE'].values
+        })
+        
+        # Calculate summary statistics
+        r2_vals = details['R2_mean'].dropna()
+        rmse_vals = details['RMSE_mean'].dropna()
+        
+        summary = {
+            "p": p,
+            "trials": len(bench_df),
+            "valid_trials": int(np.sum(np.isfinite(details["R2_mean"]) & np.isfinite(details["RMSE_mean"]))),
+            "R2_avg": float(np.nanmean(r2_vals)) if len(r2_vals) > 0 else np.nan,
+            "R2_sd": float(np.nanstd(r2_vals, ddof=1)) if len(r2_vals) > 1 else np.nan,
+            "RMSE_avg": float(np.nanmean(rmse_vals)) if len(rmse_vals) > 0 else np.nan,
+            "RMSE_sd": float(np.nanstd(rmse_vals, ddof=1)) if len(rmse_vals) > 1 else np.nan,
+        }
+        
+        print(f"Successfully loaded {len(bench_df)} trials from {csv_filename}")
+        return {"summary": summary, "details": details}
+        
+    except Exception as e:
+        print(f"Error reading benchmark file {csv_path}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"summary": {}, "details": pd.DataFrame()}
 
 # ==============================================================
 # Plot helpers (hist overlays with mean/user lines + labels)
@@ -422,7 +512,7 @@ def save_benchmark_histograms(bench_df: pd.DataFrame, rmse_user: float = np.nan,
     rmse_vals = bench_df["RMSE_mean"].dropna().values
     if len(rmse_vals) > 0:
         rmse_mean = float(np.nanmean(rmse_vals))
-        axes[0].hist(rmse_vals, bins=20, edgecolor="black", alpha=0.7, label="Random features")
+        axes[0].hist(rmse_vals, bins=50, edgecolor="black", alpha=0.7, label="Random features")
         if np.isfinite(rmse_mean):
             axes[0].axvline(rmse_mean, linestyle="--", color="gray", linewidth=2, 
                           label=f"Benchmark: {rmse_mean:.2f} mm")
@@ -438,7 +528,7 @@ def save_benchmark_histograms(bench_df: pd.DataFrame, rmse_user: float = np.nan,
     r2_vals = bench_df["R2_mean"].dropna().values
     if len(r2_vals) > 0:
         r2_mean = float(np.nanmean(r2_vals))
-        axes[1].hist(r2_vals, bins=20, edgecolor="black", alpha=0.7, label="Random features")
+        axes[1].hist(r2_vals, bins=50, edgecolor="black", alpha=0.7, label="Random features")
         if np.isfinite(r2_mean):
             axes[1].axvline(r2_mean, linestyle="--", color="gray", linewidth=2, 
                           label=f"Benchmark: {r2_mean:.3f}")
@@ -540,16 +630,10 @@ def getPrediction():
         gc.collect()
         
         # Random-feature benchmark (1000 trials; RF uses FAST OOB path)
-        bench = random_feature_benchmark_fixed(
+        bench = random_feature_benchmark_from_csv(
             user_values, 
             sex_key=sex_key, 
-            method=method, 
-            trials=BENCHMARK_TRIALS,
-            k=5, 
-            seed=2025,
-            rf_fast=True, 
-            rf_trees=BENCHMARK_TREES,
-            rf_min_samples_leaf=5
+            method=method
         )
 
         # Force cleanup after benchmarking
@@ -578,9 +662,9 @@ def getPrediction():
         return render_template(
             "results.html",
             # core outputs
-            prediction=round(res["prediction"], 1),
-            pi_lower=round(res["pi_lower"], 1),
-            pi_upper=round(res["pi_upper"], 1),
+            prediction=round(res["prediction"], 1) if res["prediction"] is not None else None,
+            pi_lower=round(res["pi_lower"], 1) if res["pi_lower"] is not None else None,
+            pi_upper=round(res["pi_upper"], 1) if res["pi_upper"] is not None else None,
             predictors=", ".join(res["predictors"]),
             sex=sex_key,
             method=method.upper(),
