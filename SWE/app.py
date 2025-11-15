@@ -18,7 +18,7 @@ import gc
 # ==============================================================
 #BENCHMARK_TRIALS = 100   # Reduced from 1000 for speed
 #BENCHMARK_TREES = 5     # Reduced from 200 for speed
-#CV_TREES = 50
+CV_TREES = 50
 
 
 # ==============================================================
@@ -132,7 +132,7 @@ def cv_run(train_df: pd.DataFrame, predictors: list, method: str = "ols", k: int
             del rf  # explicitly delete to free memory
 
         r2 = r2_score(y_te, y_hat)
-        rmse = mean_squared_error(y_te, y_hat, squared=False)
+        rmse = np.sqrt(mean_squared_error(y_te, y_hat))
         r2_list.append(r2); rmse_list.append(rmse)
         details.append({"fold": i, "R2": float(r2), "RMSE": float(rmse)})
 
@@ -421,6 +421,9 @@ def random_feature_benchmark_from_csv(user_values: dict, sex_key: str, method: s
     try:
         # Read the CSV file
         bench_df = pd.read_csv(csv_path)
+
+        # Keep only the first 10000 iterations (excludes summary rows and any extra rows)
+        bench_df = bench_df[bench_df['Iteration'] <= 10000]
         
         # Check for required columns
         # Columns should be: Iteration, Num_Vari, Selected_Vertebrae, MSE, RMSE, R_Squared

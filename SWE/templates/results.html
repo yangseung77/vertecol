@@ -101,9 +101,9 @@
           </td>
         </tr>
         <tr>
-          <th>Random-feature benchmark (same p, 1000 trials)</th>
+          <th>Random-feature benchmark (same predictors, 10,000 trials)</th>
           <td>
-            p = {{ bench_p|default("—") }},
+            predictors = {{ bench_p|default("—") }},
             trials = {{ bench_trials|default("—") }},
             valid = {{ bench_valid|default("—") }}<br>
             Avg R² = {{ r2_bench_avg|round(4)|default("—") }} (± {{ r2_bench_sd|round(4)|default("—") }}),
