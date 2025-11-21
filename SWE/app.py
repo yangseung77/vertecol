@@ -167,12 +167,13 @@ def rf_predict_with_quantiles(rf: RandomForestRegressor, x_user: pd.DataFrame, q
 
 
 # ==============================================================
-# Fit + Predict (OLS with PI, RF with quantile-style PI)
+# Fit + Predict (100% train, no CV)
 # ==============================================================
 
 def fit_and_predict(user_values: dict, sex_key: str, method: str = "ols", k: int = 5, seed: int = 42):
     """
     user_values: {"C2": 34.2, "T1": 28.4, ...}  (positives only are considered)
+    Option 2: No K-fold CV. Train on 100% of data and report training performance.
     """
     # keep only valid, positive predictors in canonical order
     use_vars = [v for v in VERTE_NAMES if v in user_values and pd.notnull(user_values[v]) and float(user_values[v]) > 0]
@@ -184,14 +185,12 @@ def fit_and_predict(user_values: dict, sex_key: str, method: str = "ols", k: int
     if len(train_df) < 4:
         raise ValueError(f"Too few rows for training after filtering by sex={sex_key} and predictors={use_vars}")
 
-    # CV (for UI summaries and benchmark overlays)
-    cv = cv_run(train_df, use_vars, method=method, k=k, seed=seed)
-
-    # Final fit on full training set
+    # Prepare full training data (100% of available data)
     X = train_df[use_vars]
     y = train_df["Sum_Verts"].values
     x_user = pd.DataFrame([{k: user_values[k] for k in use_vars}])[use_vars]
 
+    # Fit model on 100% of data
     if method == "ols":
         X_ = sm.add_constant(X, has_constant="add")
         fit = sm.OLS(y, X_).fit()
@@ -200,12 +199,24 @@ def fit_and_predict(user_values: dict, sex_key: str, method: str = "ols", k: int
         pred = float(pred_frame["mean"].iloc[0])
         pi_lower = float(pred_frame["obs_ci_lower"].iloc[0])
         pi_upper = float(pred_frame["obs_ci_upper"].iloc[0])
+        
+        # Calculate R² and RMSE on training data
+        y_pred_train = fit.predict(X_)
+        r2_train = r2_score(y, y_pred_train)
+        rmse_train = np.sqrt(mean_squared_error(y, y_pred_train))
+        
         model = fit
         rf_importance = None
     else:
         rf = RandomForestRegressor(n_estimators=100, random_state=seed, n_jobs=1, max_depth=15, min_samples_leaf=3)
         rf.fit(X, y)
         pred, pi_lower, pi_upper = rf_predict_with_quantiles(rf, x_user, 0.025, 0.975)
+        
+        # Calculate R² and RMSE on training data
+        y_pred_train = rf.predict(X.values)
+        r2_train = r2_score(y, y_pred_train)
+        rmse_train = np.sqrt(mean_squared_error(y, y_pred_train))
+        
         model = rf
         # Variable importance (type-stable)
         rf_importance = (
@@ -214,12 +225,18 @@ def fit_and_predict(user_values: dict, sex_key: str, method: str = "ols", k: int
               .reset_index(drop=True)
         )
 
+    # Create model performance summary (replaces CV)
+    model_performance = {
+        "R2": float(r2_train),
+        "RMSE": float(rmse_train)
+    }
+
     return {
         "predictors": use_vars,
         "prediction": float(pred),
         "pi_lower": float(pi_lower),
         "pi_upper": float(pi_upper),
-        "cv": cv,
+        "model_performance": model_performance,  # Replaces "cv"
         "model": model,
         "rf_importance": rf_importance,
         "train_n": int(len(train_df))
@@ -626,8 +643,8 @@ def getPrediction():
             traceback.print_exc()
             return render_template("results.html")
 
-        # CV plot
-        cv_img = save_cv_boxplots(res["cv"]["details"], title_prefix=f"{method.upper()} ({sex_key})")
+        # No CV plot needed for Option 2
+        cv_img = None
 
         # Force cleanup after CV plot
         gc.collect()
@@ -643,8 +660,8 @@ def getPrediction():
         gc.collect()
 
         # Benchmark histograms with mean (gray dashed) and user (red dashed)
-        r2_user = res["cv"]["summary"]["R2_mean"]
-        rmse_user = res["cv"]["summary"]["RMSE_mean"]
+        r2_user = res["model_performance"]["R2"]
+        rmse_user = res["model_performance"]["RMSE"]
         bench_img = save_benchmark_histograms(bench["details"], rmse_user=rmse_user, r2_user=r2_user)
 
         # Benchmark summary
@@ -672,9 +689,9 @@ def getPrediction():
             sex=sex_key,
             method=method.upper(),
             train_n=res["train_n"],
-            cv_k=res["cv"]["summary"]["k"],
-            cv_r2_mean=None if r2_user is None else (None if np.isnan(r2_user) else round(float(r2_user), 4)),
-            cv_rmse_mean=None if rmse_user is None else (None if np.isnan(rmse_user) else round(float(rmse_user), 4)),
+            # Model performance (replaces CV)
+            model_r2=None if r2_user is None else (None if np.isnan(r2_user) else round(float(r2_user), 4)),
+            model_rmse=None if rmse_user is None else (None if np.isnan(rmse_user) else round(float(rmse_user), 4)),
             # images
             cv_img=cv_img,
             bench_img=bench_img,

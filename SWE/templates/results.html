@@ -93,11 +93,10 @@
           </td>
         </tr>
         <tr>
-          <th>CV (k-fold)</th>
+          <th>Model Performance</th>
           <td>
-            k = {{ cv_k|default("—") }},
-            R² = {{ cv_r2_mean|default("—") }},
-            RMSE = {{ cv_rmse_mean|default("—") }}
+            R² = {{ model_r2|default("—") }},
+            RMSE = {{ model_rmse|default("—") }}
           </td>
         </tr>
         <tr>
@@ -110,12 +109,12 @@
             Avg RMSE = {{ rmse_bench_avg|round(4)|default("—") }} (± {{ rmse_bench_sd|round(4)|default("—") }})
           </td>
         </tr>
-        {% if cv_r2_mean and r2_bench_avg %}
+        {% if model_r2 and r2_bench_avg %}
         <tr>
           <th>Comparison vs. random benchmark</th>
           <td>
-            {% set r2_diff = cv_r2_mean - r2_bench_avg %}
-            {% set rmse_diff = rmse_bench_avg - cv_rmse_mean %}
+            {% set r2_diff = model_r2 - r2_bench_avg %}
+            {% set rmse_diff = rmse_bench_avg - model_rmse %}
             <div>
               R² difference (yours − avg random) :
               {% if r2_diff >= 0 %}
@@ -139,12 +138,40 @@
       </table>
     </section>
 
+    <!-- RANDOM FOREST VARIABLE IMPORTANCE -->
+    {% if rf_importance %}
+    <section class="card">
+      <h3>Random Forest: Variable Importance (Top 10)</h3>
+      <p class="muted" style="margin-top: 0; font-size: 14px;">
+        Relative importance of each vertebra in predicting Sum_Verts. Higher values indicate stronger predictors.
+      </p>
+      <table class="summary-table">
+        <thead>
+          <tr>
+            <th style="width: 20%;">Rank</th>
+            <th style="width: 40%;">Vertebra</th>
+            <th style="width: 40%;">Importance Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in rf_importance %}
+          <tr>
+            <td style="text-align: center; font-weight: 600; color: var(--muted);">{{ loop.index }}</td>
+            <td><span class="badge">{{ item.term }}</span></td>
+            <td>{{ item.importance|round(4) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    {% endif %}
+
     <!-- IMAGES: CV & BENCHMARK -->
     <section class="grid-images">
       {% if cv_img %}
         <div class="card">
-          <h3 style="margin-top:0;">Cross-Validation (R² / RMSE)</h3>
-          <img src="{{ cv_img }}" alt="CV boxplots" class="responsive" />
+          <h3 style="margin-top:0;">Model Performance (R² / RMSE)</h3>
+          <img src="{{ cv_img }}" alt="Model Performance" class="responsive" />
         </div>
       {% endif %}
 
