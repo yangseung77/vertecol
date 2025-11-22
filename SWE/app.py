@@ -526,50 +526,97 @@ def save_benchmark_histograms(bench_df: pd.DataFrame, rmse_user: float = np.nan,
     if bench_df is None or bench_df.empty:
         return None
 
-    fig, axes = plt.subplots(1, 2, figsize=(9, 3))
+    fig, axes = plt.subplots(1, 2, figsize=(20, 7))
+    
+    # Increase all font sizes significantly
+    plt.rcParams.update({
+        'font.size': 16,           # Base font size
+        'axes.titlesize': 20,      # Title size
+        'axes.labelsize': 18,      # Axis label size
+        'xtick.labelsize': 16,     # X-axis tick labels
+        'ytick.labelsize': 16,     # Y-axis tick labels
+        'legend.fontsize': 14,     # Legend font size
+        'legend.title_fontsize': 16,  # Legend title size
+    })
 
     # RMSE Panel
     rmse_vals = bench_df["RMSE_mean"].dropna().values
     if len(rmse_vals) > 0:
         rmse_mean = float(np.nanmean(rmse_vals))
-        axes[0].hist(rmse_vals, bins=50, edgecolor="black", alpha=0.7, label="Random features")
+        axes[0].hist(rmse_vals, bins=50, edgecolor="black", alpha=0.7, label="Random features", linewidth=1.5)
         if np.isfinite(rmse_mean):
-            axes[0].axvline(rmse_mean, linestyle="--", color="gray", linewidth=2, 
+            axes[0].axvline(rmse_mean, linestyle="--", color="gray", linewidth=4, 
                           label=f"Benchmark: {rmse_mean:.2f} mm")
         if np.isfinite(rmse_user):
-            axes[0].axvline(rmse_user, linestyle="--", color="red", linewidth=2, 
+            axes[0].axvline(rmse_user, linestyle="--", color="red", linewidth=4, 
                           label=f"Your model: {rmse_user:.2f} mm")
-        axes[0].set_title("RMSE Distribution (Random-Feature Trials)")
-        axes[0].set_xlabel("RMSE (mm)")
-        axes[0].set_ylabel("Frequency")
-        axes[0].legend(loc="best", framealpha=0.9, fontsize=8)
+        axes[0].set_title("RMSE Distribution (Random-Feature Trials)", fontweight='bold', pad=20)
+        axes[0].set_xlabel("RMSE (mm)", fontweight='bold')
+        axes[0].set_ylabel("Frequency", fontweight='bold')
+        
+        # Create legend with larger box and line samples
+        legend = axes[0].legend(
+            loc="best", 
+            framealpha=0.95, 
+            edgecolor='black', 
+            fancybox=False,
+            handlelength=2.5,      # Length of the line in legend
+            handleheight=1.5,      # Height of the line in legend
+            borderpad=0.8,         # Padding inside legend box
+            labelspacing=0.5,      # Space between legend entries
+            frameon=True,
+            shadow=True,
+            facecolor='white'
+        )
+        # Make legend box border thicker
+        legend.get_frame().set_linewidth(2.0)
+        
+        axes[0].grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
 
     # R² Panel
     r2_vals = bench_df["R2_mean"].dropna().values
     if len(r2_vals) > 0:
         r2_mean = float(np.nanmean(r2_vals))
-        axes[1].hist(r2_vals, bins=50, edgecolor="black", alpha=0.7, label="Random features")
+        axes[1].hist(r2_vals, bins=50, edgecolor="black", alpha=0.7, label="Random features", linewidth=1.5)
         if np.isfinite(r2_mean):
-            axes[1].axvline(r2_mean, linestyle="--", color="gray", linewidth=2, 
+            axes[1].axvline(r2_mean, linestyle="--", color="gray", linewidth=4, 
                           label=f"Benchmark: {r2_mean:.3f}")
         if np.isfinite(r2_user):
-            axes[1].axvline(r2_user, linestyle="--", color="red", linewidth=2, 
+            axes[1].axvline(r2_user, linestyle="--", color="red", linewidth=4, 
                           label=f"Your model: {r2_user:.3f}")
-        axes[1].set_title("R² Distribution (Random-Feature Trials)")
-        axes[1].set_xlabel("R² Score")
-        axes[1].set_ylabel("Frequency")
-        axes[1].legend(loc="best", framealpha=0.9, fontsize=8)
+        axes[1].set_title("R² Distribution (Random-Feature Trials)", fontweight='bold', pad=20)
+        axes[1].set_xlabel("R² Score", fontweight='bold')
+        axes[1].set_ylabel("Frequency", fontweight='bold')
+        
+        # Create legend with larger box and line samples
+        legend = axes[1].legend(
+            loc="best", 
+            framealpha=0.95, 
+            edgecolor='black', 
+            fancybox=False,
+            handlelength=2.5,      # Length of the line in legend
+            handleheight=1.5,      # Height of the line in legend
+            borderpad=0.8,         # Padding inside legend box
+            labelspacing=0.5,      # Space between legend entries
+            frameon=True,
+            shadow=True,
+            facecolor='white'
+        )
+        # Make legend box border thicker
+        legend.get_frame().set_linewidth(1.5)
+        
+        axes[1].grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
 
     fname = f"bench_{uuid.uuid4().hex}.png"
     path = os.path.join(PLOTS_DIR, fname)
-    fig.tight_layout()
-    fig.savefig(path, dpi=90, bbox_inches='tight')
+    fig.tight_layout(pad=2.0)
+    fig.savefig(path, dpi=150, bbox_inches='tight')
    
-    # Aggresive cleanup
+    # Aggressive cleanup
     plt.close(fig)
-    plt.close('all')    # Extra safety
-    del fig, axes, rmse_vals, r2_vals   # Explicit deletion
-    gc.collect()    # Force cleanup
+    plt.close('all')
+    del fig, axes, rmse_vals, r2_vals
+    gc.collect()
     return url_for("static", filename=f"plots/{fname}")
 
 

@@ -50,7 +50,8 @@
     .warn  { color: #b45309; font-weight: 600; }
     .grid-images { display: grid; gap: 16px; grid-template-columns: 1fr; }
     @media (min-width: 900px) { .grid-images { grid-template-columns: 1fr 1fr; } }
-    img.responsive { max-width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); }
+    img.responsive { width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); }
+    img.benchmark { width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); min-height: 400px; }
     .back { display: inline-block; margin-top: 12px; text-decoration: none; color: #1f2937; }
     .back:hover { text-decoration: underline; }
   </style>
@@ -80,11 +81,11 @@
           <td>{{ predictors|default("—") }}</td>
         </tr>
         <tr>
-          <th>Training size (rows)</th>
+          <th>Training size</th>
           <td>{{ train_n|default("—") }}</td>
         </tr>
         <tr>
-          <th>Prediction (Sum_Verts)</th>
+          <th>Prediction</th>
           <td>
             <strong>{{ prediction|default("—") }}</strong>
             {% if pi_lower is not none and pi_upper is not none %}
@@ -100,7 +101,7 @@
           </td>
         </tr>
         <tr>
-          <th>Random-feature benchmark (same predictors, 10,000 trials)</th>
+          <th>Random-feature benchmark (same number of predictors, 10,000 trials)</th>
           <td>
             predictors = {{ bench_p|default("—") }},
             trials = {{ bench_trials|default("—") }},
@@ -143,7 +144,7 @@
     <section class="card">
       <h3>Random Forest: Variable Importance (Top 10)</h3>
       <p class="muted" style="margin-top: 0; font-size: 14px;">
-        Relative importance of each vertebra in predicting Sum_Verts. Higher values indicate stronger predictors.
+        Relative importance of each vertebra in predicting the total vertebral column length. Higher values indicate stronger predictors.
       </p>
       <table class="summary-table">
         <thead>
@@ -176,9 +177,9 @@
       {% endif %}
 
       {% if bench_img %}
-        <div class="card">
+        <div class="card" style="grid-column: 1 / -1;">
           <h3 style="margin-top:0;">Random-feature benchmark (10,000 trials)</h3>
-          <img src="{{ bench_img }}" alt="Benchmark histograms" class="responsive" />
+          <img src="{{ bench_img }}" alt="Benchmark histograms" class="benchmark" />
         </div>
       {% endif %}
     </section>
